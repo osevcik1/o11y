@@ -5,13 +5,16 @@ rule_files:
 
 tests:
 
+  # Sustained churn: a one-minute defrag on every CronJob run (every 5 minutes) for two hours.
   - interval: 1m
     input_series:
       - series: etcd_disk_defrag_inflight{source_cluster="cluster01"}
-        values: 1x5 0x25 1x5 0x35
+        values: 1 0 0 0 0 1 0 0 0 0 1 0 0 0 0 1 0 0 0 0 1 0 0 0 0 1 0 0 0 0 1 0 0 0 0 1 0 0 0 0 1 0 0 0 0 1 0 0 0 0 1 0 0 0 0 1 0 0 0 0 1 0 0 0 0 1 0 0 0 0 1 0 0 0 0 1 0 0 0 0 1 0 0 0 0 1 0 0 0 0 1 0 0 0 0 1 0 0 0 0 1 0 0 0 0 1 0 0 0 0 1 0 0 0 0 1 0 0 0 0
 
     alert_rule_test:
-      - eval_time: 33m
+      - eval_time: 50m
+        alertname: EtcdDefragFrequent
+      - eval_time: 60m
         alertname: EtcdDefragFrequent
         exp_alerts:
           - exp_labels:
@@ -20,11 +23,34 @@ tests:
               source_cluster: cluster01
             exp_annotations:
               summary: Etcd defragmentation is happening too frequently
-              description: 'Etcd defragmentation occurred more than once in the last 30 minutes in cluster cluster01.'
+              description: 'Etcd defragmentation started 12 times in the last hour in cluster cluster01.'
               alert_routing_key: infra
               team: konflux-infra
               runbook_url: https://gitlab.cee.redhat.com/konflux/docs/sop/-/blob/main/infra/etcd.md
 
+  # A defrag every 15 minutes (4 per hour) stays below the threshold.
+  - interval: 1m
+    input_series:
+      - series: etcd_disk_defrag_inflight{source_cluster="cluster01"}
+        values: 1 0 0 0 0 0 0 0 0 0 0 0 0 0 0 1 0 0 0 0 0 0 0 0 0 0 0 0 0 0 1 0 0 0 0 0 0 0 0 0 0 0 0 0 0 1 0 0 0 0 0 0 0 0 0 0 0 0 0 0 1 0 0 0 0 0 0 0 0 0 0 0 0 0 0 1 0 0 0 0 0 0 0 0 0 0 0 0 0 0 1 0 0 0 0 0 0 0 0 0 0 0 0 0 0 1 0 0 0 0 0 0 0 0 0 0 0 0 0 0
+
+    alert_rule_test:
+      - eval_time: 110m
+        alertname: EtcdDefragFrequent
+
+  # Two cycles 30 minutes apart (fired the previous rule) must not alert.
+  - interval: 1m
+    input_series:
+      - series: etcd_disk_defrag_inflight{source_cluster="cluster01"}
+        values: 1x5 0x25 1x5 0x35
+
+    alert_rule_test:
+      - eval_time: 33m
+        alertname: EtcdDefragFrequent
+      - eval_time: 60m
+        alertname: EtcdDefragFrequent
+
+  # A single cycle defragmenting members one after another counts as one start.
   - interval: 1m
     input_series:
       - series: etcd_disk_defrag_inflight{source_cluster="cluster01", instance="instance1"}
@@ -35,7 +61,7 @@ tests:
         values: 0x4 1x2 0x64
 
     alert_rule_test:
-      - eval_time: 5m
+      - eval_time: 30m
         alertname: EtcdDefragFrequent
 
   - interval: 1m

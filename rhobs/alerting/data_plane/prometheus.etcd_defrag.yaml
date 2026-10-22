@@ -28,12 +28,20 @@ spec:
           team: konflux-infra
           runbook_url: https://gitlab.cee.redhat.com/konflux/docs/sop/-/blob/main/infra/etcd.md
 
+      # Counts defrag cycle starts over the last hour. A cycle start is a defrag with no defrag in the
+      # preceding 2m, so members defragmented one after another count once. max_over_time catches
+      # defrags that last a single scrape. The etcd-maintenance CronJob runs every 5m, so isolated
+      # back-to-back defrags are expected; only sustained churn is worth attention.
       - alert: EtcdDefragFrequent
         expr: |
-          sum by (source_cluster) (etcd_disk_defrag_inflight) > 0
-          and
-          sum by (source_cluster) (max_over_time(etcd_disk_defrag_inflight[20m] offset 10m)) > 0
-        for: 1m
+          count_over_time(
+            (
+              (sum by (source_cluster) (max_over_time(etcd_disk_defrag_inflight[1m])) > 0)
+              unless
+              (sum by (source_cluster) (max_over_time(etcd_disk_defrag_inflight[2m] offset 1m)) > 0)
+            )[1h:1m]
+          ) >= 6
+        for: 30m
         labels:
           severity: warning
           component: etcd
@@ -41,7 +49,7 @@ spec:
           summary: >-
             Etcd defragmentation is happening too frequently
           description: >-
-            Etcd defragmentation occurred more than once in the last 30 minutes in cluster {{ $labels.source_cluster }}.
+            Etcd defragmentation started {{ $value }} times in the last hour in cluster {{ $labels.source_cluster }}.
           alert_routing_key: infra
           team: konflux-infra
           runbook_url: https://gitlab.cee.redhat.com/konflux/docs/sop/-/blob/main/infra/etcd.md
